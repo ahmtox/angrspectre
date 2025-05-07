@@ -1,0 +1,9 @@
+.vscode
+__pycache__
+venv
+pypy
+*~
+angr
+/packaged
+angr-git
+.venv
