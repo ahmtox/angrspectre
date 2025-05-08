@@ -1,5 +1,5 @@
 import claripy
-from angrspectre.core.taint import is_tainted
+from angrspectre.core.secret_tracking import contains_secret_data
 
 def isAst(x):
     return isinstance(x, claripy.ast.Base)
@@ -7,7 +7,7 @@ def isAst(x):
 def describeAst(ast, checkTaint=True):
     return hex(ast) if not isAst(ast) \
             else "{}".format(ast) if not checkTaint \
-            else "{} (TAINTED)".format(ast) if is_tainted(ast) \
+            else "{} (TAINTED)".format(ast) if contains_secret_data(ast) \
             else "{} (untainted, but with annotations {})".format(ast, ast.annotations) if hasattr(ast, 'annotations') and ast.annotations \
             else "{} (untainted)".format(ast)
 

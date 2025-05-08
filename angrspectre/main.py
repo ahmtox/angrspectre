@@ -21,12 +21,11 @@ import angr
 import claripy
 
 # Import your modules with standard imports
-from angrspectre.core.specvex import makeSpeculative
-from angrspectre.core.oob import armBoundsChecks, OOBViolationFilter
-from angrspectre.core.spectre import armSpectreOOBChecks, armSpectreExplicitChecks, SpectreViolationFilter
-from angrspectre.core.irop_hook import IROpHook
-from angrspectre.utils.interactiveutils import *  #pylint:disable=unused-wildcard-import
-from angrspectre.core.abstractdata import publicValue, secretValue, pointerTo, pointerToUnconstrainedPublic, publicArray, secretArray, array, struct
+from angrspectre.core.speculative_execution import enable_speculative_execution
+from angrspectre.core.memory_bounds import setup_bounds_checking, MemoryViolationFilter
+from angrspectre.core.vulnerability_detector import setup_oob_detection, setup_secret_detection, VulnerabilityFilter
+from angrspectre.core.symbolic_operation_monitor import SymbolicOperationMonitor
+from angrspectre.core.memory_model import create_public_value, create_sensitive_value, create_pointer_to, create_generic_pointer, create_public_array, create_sensitive_array, create_array, create_struct
 
 l = logging.getLogger(name=__name__)
 
@@ -122,7 +121,7 @@ def funcEntryState(proj, funcname, args):
     argBVSs = list(claripy.BVS(name, val.bits) for (name, (_, val)) in zip(argnames, args))
     state = proj.factory.call_state(funcaddr, *argBVSs)
     state.globals['args'] = {argname:(argBVS, val) for (argname, (_, val), argBVS) in zip(argnames, args, argBVSs)}
-    state.register_plugin('irop_hook', IROpHook())
+    state.register_plugin('irop_hook', SymbolicOperationMonitor())
     return state
 
 def getArgBVS(state, argname):
@@ -143,11 +142,11 @@ def addSecretObject(proj, state, symbol, length):
 
 def newSpectreV1TestcasesProject():
     """Load the Spectre V1 testcases project"""
-    return angr.Project('testcases/new-testcases/spectrev1')
+    return angr.Project('testcases/other_spectre/spectrev1')
 
 def forwardingTestcasesProject():
     """Load the forwarding testcases project"""
-    return angr.Project('testcases/new-testcases/forwarding')
+    return angr.Project('testcases/other_spectre/forwarding')
 
 #------------------------------------------------------------------------------
 # KOCHER TEST CASES
@@ -163,20 +162,20 @@ def kocher(s):
     Returns:
         Tuple of (project, state)
     """
-    proj = angr.Project('testcases/spectector-clang/'+s+'.o')
+    proj = angr.Project('testcases/kocher/'+s+'.o')
     funcname = "victim_function_v"+s
     
     # Configure state based on test case
     if s == '10':
-        state = funcEntryState(proj, funcname, [(None, publicValue()), (None, publicValue(bits=8))])
+        state = funcEntryState(proj, funcname, [(None, create_public_value()), (None, create_public_value(bits=8))])
     elif s == '12':
-        state = funcEntryState(proj, funcname, [(None, publicValue()), (None, publicValue())])
+        state = funcEntryState(proj, funcname, [(None, create_public_value()), (None, create_public_value())])
     elif s == '09':
-        state = funcEntryState(proj, funcname, [(None, publicValue()), (None, pointerToUnconstrainedPublic())])
+        state = funcEntryState(proj, funcname, [(None, create_public_value()), (None, create_generic_pointer())])
     elif s == '15':
-        state = funcEntryState(proj, funcname, [(None, pointerToUnconstrainedPublic())])
+        state = funcEntryState(proj, funcname, [(None, create_generic_pointer())])
     else:
-        state = funcEntryState(proj, funcname, [(None, publicValue())])
+        state = funcEntryState(proj, funcname, [(None, create_public_value())])
     return (proj, state)
 
 def kocher11(s):
@@ -189,8 +188,8 @@ def kocher11(s):
     Returns:
         Tuple of (project, state)
     """
-    proj = angr.Project('testcases/spectector-clang/11'+s+'.o')
-    state = funcEntryState(proj, "victim_function_v11", [(None, publicValue())])
+    proj = angr.Project('testcases/kocher/11'+s+'.o')
+    state = funcEntryState(proj, "victim_function_v11", [(None, create_public_value())])
     return (proj, state)
 
 #------------------------------------------------------------------------------
@@ -206,20 +205,20 @@ def create_forwarding_example(example_num, args):
 
 def forwarding_example_1():
     return create_forwarding_example(1, [
-        ("idx", publicValue(bits=64)),
-        ("val", publicValue(bits=8)),
-        ("idx2", publicValue(bits=64))
+        ("idx", create_public_value(bits=64)),
+        ("val", create_public_value(bits=8)),
+        ("idx2", create_public_value(bits=64))
     ])
 
 def forwarding_example_2():
     return create_forwarding_example(2, [
-        ("idx", publicValue(bits=64))
+        ("idx", create_public_value(bits=64))
     ])
 
 def forwarding_example_3():
     return create_forwarding_example(3, [
-        ("idx", publicValue(bits=64)),
-        ("mask", publicValue(bits=8))
+        ("idx", create_public_value(bits=64)),
+        ("mask", create_public_value(bits=8))
     ])
 
 def forwarding_example_4():
@@ -227,9 +226,9 @@ def forwarding_example_4():
 
 def forwarding_example_5():
     return create_forwarding_example(5, [
-        ("idx", publicValue(bits=64)),
-        ("val", publicValue(bits=8)),
-        ("idx2", publicValue(bits=64))
+        ("idx", create_public_value(bits=64)),
+        ("val", create_public_value(bits=8)),
+        ("idx2", create_public_value(bits=64))
     ])
 
 #------------------------------------------------------------------------------
@@ -239,7 +238,7 @@ def forwarding_example_5():
 def _typicalSpectrev1Case(casename):
     """Helper for creating standard Spectre v1 test cases"""
     proj = newSpectreV1TestcasesProject()
-    state = funcEntryState(proj, casename, [ ("idx", publicValue(bits=64)) ])
+    state = funcEntryState(proj, casename, [ ("idx", create_public_value(bits=64)) ])
     addSecretObject(proj, state, 'secretarray', 16)
     return (proj, state)
 
@@ -273,8 +272,8 @@ spectrev1_case_9 = spectrev1_case_factory("9")
 def spectrev1_case_10():
     proj = newSpectreV1TestcasesProject()
     state = funcEntryState(proj, "case_10", [
-        ("idx", publicValue(bits=64)),
-        ("val", publicValue(bits=8))
+        ("idx", create_public_value(bits=64)),
+        ("val", create_public_value(bits=8))
     ])
     addSecretObject(proj, state, 'secretarray', 16)
     return (proj, state)
@@ -286,8 +285,8 @@ spectrev1_case_11sub = lambda: _typicalSpectrev1Case("case_11sub")
 def spectrev1_case_12():
     proj = newSpectreV1TestcasesProject()
     state = funcEntryState(proj, "case_12", [
-        ("idx", publicValue(bits=64)),
-        ("val", publicValue(bits=8))
+        ("idx", create_public_value(bits=64)),
+        ("val", create_public_value(bits=8))
     ])
     addSecretObject(proj, state, 'secretarray', 16)
     return (proj, state)
@@ -315,16 +314,16 @@ def getSimgr(proj, state, spec=True, window=None, misforwarding=False):
     """
     if spec:
         if window is not None: 
-            makeSpeculative(proj, state, window, misforwarding=misforwarding)
+            enable_speculative_execution(proj, state, window, misforwarding=misforwarding)
         else: 
-            makeSpeculative(proj, state, misforwarding=misforwarding)
+            enable_speculative_execution(proj, state, misforwarding=misforwarding)
             
     simgr = proj.factory.simgr(state, save_unsat=False)
     
-    if state.has_plugin('oob'):
-        simgr.use_technique(OOBViolationFilter())
+    if state.has_plugin('bounds_tracker'):
+        simgr.use_technique(MemoryViolationFilter())
     if state.has_plugin('spectre'):
-        simgr.use_technique(SpectreViolationFilter())
+        simgr.use_technique(VulnerabilityFilter())
         
     return simgr
 
@@ -407,9 +406,9 @@ def _spectreSimgr(getProjState, getProjStateArgs, funcname, checks, spec=True, w
     proj, state = getProjState(*getProjStateArgs)
     
     if checks == 'OOB': 
-        armSpectreOOBChecks(proj, state)
+        setup_oob_detection(proj, state)
     elif checks == 'explicit': 
-        armSpectreExplicitChecks(proj, state, whitelist, trace, takepath)
+        setup_secret_detection(proj, state, whitelist, trace, takepath)
     else: 
         raise ValueError(f"Expected `checks` to be either 'OOB' or 'explicit', got {checks}")
         
