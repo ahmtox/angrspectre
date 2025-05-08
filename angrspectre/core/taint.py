@@ -2,7 +2,7 @@ import sys
 import os
 
 # Setup paths to use local angr
-from angrspectre.pathconfig import setup_paths
+from angrspectre.config import setup_paths
 setup_paths()
 
 # Import angr directly (this will use the local version because of sys.path modification)

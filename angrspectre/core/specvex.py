@@ -4,7 +4,7 @@ import collections
 import logging
 
 # Setup paths to use local angr
-from angrspectre.pathconfig import setup_paths
+from angrspectre.config import setup_paths
 setup_paths()
 
 # Standard imports - these will use the local angr due to sys.path manipulation
